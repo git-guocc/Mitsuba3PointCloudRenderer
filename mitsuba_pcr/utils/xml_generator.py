@@ -1,0 +1,454 @@
+"""
+XML场景生成模块
+
+使用xml.etree.ElementTree库生成Mitsuba2渲染引擎所需的XML场景描述文件。
+"""
+
+import os
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+
+def prettify_xml(elem):
+    """
+    将ElementTree元素转换为格式化的XML字符串
+    
+    参数:
+        elem: ElementTree元素
+    
+    返回:
+        str: 格式化的XML字符串
+    """
+    rough_string = ET.tostring(elem, 'utf-8')
+    reparsed = minidom.parseString(rough_string)
+    return reparsed.toprettyxml(indent="    ").replace('<?xml version="1.0" ?>\n', '')
+
+def create_scene_element():
+    """
+    创建场景根元素
+    
+    返回:
+        Element: 场景根元素
+    """
+    scene = ET.Element("scene")
+    scene.set("version", "0.6.0")
+    return scene
+
+def add_constant_emitter(scene, radiance=(1, 1, 1)):
+    """
+    添加常量发光体
+    
+    参数:
+        scene (Element): 场景元素
+        radiance (tuple): RGB辐射值
+    
+    返回:
+        Element: 添加的发光体元素
+    """
+    emitter = ET.SubElement(scene, "emitter")
+    emitter.set("type", "constant")
+    
+    rgb = ET.SubElement(emitter, "rgb")
+    rgb.set("name", "radiance")
+    rgb.set("value", f"{radiance[0]},{radiance[1]},{radiance[2]}")
+    
+    return emitter
+
+def add_integrator(scene, integrator_type="path", max_depth=-1):
+    """
+    添加积分器
+    
+    参数:
+        scene (Element): 场景元素
+        integrator_type (str): 积分器类型，'path'或'direct'
+        max_depth (int): 最大光线深度，仅对path积分器有效
+    
+    返回:
+        Element: 添加的积分器元素
+    """
+    integrator = ET.SubElement(scene, "integrator")
+    integrator.set("type", integrator_type)
+    
+    if integrator_type == "path" and max_depth > 0:
+        max_depth_elem = ET.SubElement(integrator, "integer")
+        max_depth_elem.set("name", "maxDepth")
+        max_depth_elem.set("value", str(max_depth))
+    
+    return integrator
+
+def add_perspective_sensor(scene, origin, target, up, fov, film_width, film_height, samples_per_pixel):
+    """
+    添加透视相机
+    
+    参数:
+        scene (Element): 场景元素
+        origin (tuple): 相机原点坐标
+        target (tuple): 相机目标点坐标
+        up (tuple): 相机上方向
+        fov (float): 视场角（度）
+        film_width (int): 输出图像宽度
+        film_height (int): 输出图像高度
+        samples_per_pixel (int): 每像素采样数
+    
+    返回:
+        Element: 添加的相机元素
+    """
+    sensor = ET.SubElement(scene, "sensor")
+    sensor.set("type", "perspective")
+    
+    # 远近裁剪面
+    far_clip = ET.SubElement(sensor, "float")
+    far_clip.set("name", "farClip")
+    far_clip.set("value", "100")
+    
+    near_clip = ET.SubElement(sensor, "float")
+    near_clip.set("name", "nearClip")
+    near_clip.set("value", "0.1")
+    
+    # 相机变换
+    transform = ET.SubElement(sensor, "transform")
+    transform.set("name", "toWorld")
+    
+    # 确保坐标是有效的浮点数
+    origin_str = f"{float(origin[0])},{float(origin[1])},{float(origin[2])}"
+    target_str = f"{float(target[0])},{float(target[1])},{float(target[2])}"
+    up_str = f"{float(up[0])},{float(up[1])},{float(up[2])}"
+    
+    # 检查相机位置和目标点不能相同
+    if origin_str == target_str:
+        print("警告: 相机位置和目标点相同，调整目标点位置")
+        target_list = list(map(float, target))
+        target_list[2] += 0.1  # 稍微调整Z轴
+        target_str = f"{target_list[0]},{target_list[1]},{target_list[2]}"
+    
+    lookat = ET.SubElement(transform, "lookat")
+    lookat.set("origin", origin_str)
+    lookat.set("target", target_str)
+    lookat.set("up", up_str)
+    
+    # 视场角
+    fov_elem = ET.SubElement(sensor, "float")
+    fov_elem.set("name", "fov")
+    fov_elem.set("value", str(fov))
+    
+    # 采样器
+    sampler = ET.SubElement(sensor, "sampler")
+    sampler.set("type", "independent")
+    
+    sample_count = ET.SubElement(sampler, "integer")
+    sample_count.set("name", "sampleCount")
+    sample_count.set("value", str(samples_per_pixel))
+    
+    # 胶片
+    film = ET.SubElement(sensor, "film")
+    film.set("type", "hdrfilm")
+    
+    width = ET.SubElement(film, "integer")
+    width.set("name", "width")
+    width.set("value", str(film_width))
+    
+    height = ET.SubElement(film, "integer")
+    height.set("name", "height")
+    height.set("value", str(film_height))
+    
+    rfilter = ET.SubElement(film, "rfilter")
+    rfilter.set("type", "gaussian")
+    
+    return sensor
+
+def add_surface_material(scene):
+    """
+    添加表面材质
+    
+    参数:
+        scene (Element): 场景元素
+    
+    返回:
+        Element: 添加的材质元素
+    """
+    bsdf = ET.SubElement(scene, "bsdf")
+    bsdf.set("type", "roughplastic")
+    bsdf.set("id", "surfaceMaterial")
+    
+    distribution = ET.SubElement(bsdf, "string")
+    distribution.set("name", "distribution")
+    distribution.set("value", "ggx")
+    
+    alpha = ET.SubElement(bsdf, "float")
+    alpha.set("name", "alpha")
+    alpha.set("value", "0.05")
+    
+    int_ior = ET.SubElement(bsdf, "float")
+    int_ior.set("name", "intIOR")
+    int_ior.set("value", "1.46")
+    
+    diffuse = ET.SubElement(bsdf, "rgb")
+    diffuse.set("name", "diffuseReflectance")
+    diffuse.set("value", "1,1,1")
+    
+    return bsdf
+
+def add_point_cloud(scene, points, colors, point_radius=0.006):
+    """
+    添加点云
+    
+    参数:
+        scene (Element): 场景元素
+        points (numpy.ndarray): 点坐标，形状为(N, 3)
+        colors (numpy.ndarray): 点颜色，形状为(N, 3)，范围[0, 1]
+        point_radius (float): 点半径
+    
+    返回:
+        list: 添加的点元素列表
+    """
+    if points is None or points.shape[0] == 0:
+        return []
+    
+    spheres = []
+    for i in range(points.shape[0]):
+        point = points[i]
+        
+        # 获取颜色
+        if colors is not None and i < colors.shape[0]:
+            color = colors[i]
+        else:
+            color = [0.7, 0.7, 0.7]  # 默认颜色
+        
+        # 创建球体
+        sphere = ET.SubElement(scene, "shape")
+        sphere.set("type", "sphere")
+        
+        radius = ET.SubElement(sphere, "float")
+        radius.set("name", "radius")
+        radius.set("value", str(point_radius))
+        
+        transform = ET.SubElement(sphere, "transform")
+        transform.set("name", "toWorld")
+        
+        translate = ET.SubElement(transform, "translate")
+        translate.set("x", str(point[0]))
+        translate.set("y", str(point[1]))
+        translate.set("z", str(point[2]))
+        
+        # 添加材质
+        bsdf = ET.SubElement(sphere, "bsdf")
+        bsdf.set("type", "diffuse")
+        
+        rgb = ET.SubElement(bsdf, "rgb")
+        rgb.set("name", "reflectance")
+        rgb.set("value", f"{color[0]},{color[1]},{color[2]}")
+        
+        spheres.append(sphere)
+    
+    return spheres
+
+def add_ground_plane(scene, size=10, height=-0.5):
+    """
+    添加地面平面
+    
+    参数:
+        scene (Element): 场景元素
+        size (float): 平面大小
+        height (float): 平面高度
+    
+    返回:
+        Element: 添加的平面元素
+    """
+    shape = ET.SubElement(scene, "shape")
+    shape.set("type", "rectangle")
+    
+    ref = ET.SubElement(shape, "ref")
+    ref.set("name", "bsdf")
+    ref.set("id", "surfaceMaterial")
+    
+    transform = ET.SubElement(shape, "transform")
+    transform.set("name", "toWorld")
+    
+    scale = ET.SubElement(transform, "scale")
+    scale.set("x", str(size))
+    scale.set("y", str(size))
+    scale.set("z", "1")
+    
+    translate = ET.SubElement(transform, "translate")
+    translate.set("x", "0")
+    translate.set("y", "0")
+    translate.set("z", str(height))
+    
+    return shape
+
+def add_area_light(scene, size=10, height=20, intensity=3):
+    """
+    添加面光源
+    
+    参数:
+        scene (Element): 场景元素
+        size (float): 光源大小
+        height (float): 光源高度
+        intensity (float): 光源强度
+    
+    返回:
+        Element: 添加的光源元素
+    """
+    shape = ET.SubElement(scene, "shape")
+    shape.set("type", "rectangle")
+    
+    transform = ET.SubElement(shape, "transform")
+    transform.set("name", "toWorld")
+    
+    scale = ET.SubElement(transform, "scale")
+    scale.set("x", str(size))
+    scale.set("y", str(size))
+    scale.set("z", "1")
+    
+    lookat = ET.SubElement(transform, "lookat")
+    # 确保坐标是有效的浮点数
+    origin_str = f"{float(-4)},{float(4)},{float(height)}"
+    target_str = f"{float(0)},{float(0)},{float(0)}"
+    up_str = f"{float(0)},{float(0)},{float(1)}"
+    
+    lookat.set("origin", origin_str)
+    lookat.set("target", target_str)
+    lookat.set("up", up_str)
+    
+    emitter = ET.SubElement(shape, "emitter")
+    emitter.set("type", "area")
+    
+    rgb = ET.SubElement(emitter, "rgb")
+    rgb.set("name", "radiance")
+    rgb.set("value", f"{intensity},{intensity},{intensity}")
+    
+    return shape
+
+def generate_scene_xml(config):
+    """
+    生成完整的Mitsuba场景XML
+    
+    参数:
+        config (dict): 配置参数字典，包含:
+            - integrator_type (str): 积分器类型，'path'或'direct'
+            - samples_per_pixel (int): 每像素采样数
+            - max_depth (int): 最大光线深度
+            - film_width (int): 输出图像宽度
+            - film_height (int): 输出图像高度
+            - fov (float): 视场角（度）
+            - origin (list): 相机原点坐标 [x, y, z]
+            - target (list): 相机目标点坐标 [x, y, z]
+            - up (list): 相机上方向 [x, y, z]
+            - points (numpy.ndarray): 点坐标
+            - colors (numpy.ndarray): 点颜色
+            - point_radius (float): 点半径
+            - include_ground (bool): 是否包含地面
+            - ground_params (dict): 地面参数
+            - include_area_light (bool): 是否包含面光源
+            - light_params (dict): 光源参数
+    
+    返回:
+        str: 完整的XML场景描述
+    """
+    # 默认参数
+    integrator_type = config.get('integrator_type', 'path')
+    samples_per_pixel = config.get('samples_per_pixel', 256)
+    max_depth = config.get('max_depth', -1)
+    film_width = config.get('film_width', 3840)
+    film_height = config.get('film_height', 2160)
+    fov = config.get('fov', 91.49)
+    
+    # 相机参数
+    origin = config.get('origin', [0, -4, 2])  # 更好的默认相机位置
+    target = config.get('target', [0, 0, 0])
+    up = config.get('up', [0, 0, 1])
+    
+    # 创建场景
+    scene = create_scene_element()
+    
+    # 添加常量发光体
+    add_constant_emitter(scene)
+    
+    # 添加积分器
+    add_integrator(scene, integrator_type, max_depth)
+    
+    # 添加相机
+    add_perspective_sensor(scene, origin, target, up, fov, film_width, film_height, samples_per_pixel)
+    
+    # 添加表面材质
+    add_surface_material(scene)
+    
+    # 添加点云
+    if 'points' in config:
+        add_point_cloud(
+            scene, 
+            config['points'], 
+            config.get('colors', None), 
+            config.get('point_radius', 0.006)
+        )
+    
+    # 添加地面（如果需要）
+    if config.get('include_ground', True):
+        ground_params = config.get('ground_params', {})
+        size = ground_params.get('size', 10)
+        height = ground_params.get('height', -0.5)
+        add_ground_plane(scene, size, height)
+    
+    # 添加面光源（如果需要）
+    if config.get('include_area_light', True):
+        light_params = config.get('light_params', {})
+        size = light_params.get('size', 10)
+        height = light_params.get('height', 20)
+        intensity = light_params.get('intensity', 3)
+        add_area_light(scene, size, height, intensity)
+    
+    # 生成格式化的XML字符串
+    return prettify_xml(scene)
+
+def save_scene_xml(xml_content, output_file):
+    """
+    将XML场景内容保存到文件
+    
+    参数:
+        xml_content (str): XML场景内容
+        output_file (str): 输出文件路径
+    
+    返回:
+        bool: 保存是否成功
+    """
+    try:
+        with open(output_file, 'w') as f:
+            f.write(xml_content)
+        print(f"XML场景已保存到: {output_file}")
+        return True
+    except Exception as e:
+        print(f"保存XML场景到 '{output_file}' 时发生错误: {e}")
+        return False
+
+def update_camera_in_xml(xml_content, origin, target, up):
+    """
+    更新XML中的相机参数
+    
+    参数:
+        xml_content (str): 原始XML内容
+        origin (list): 相机原点坐标 [x, y, z]
+        target (list): 相机目标点坐标 [x, y, z]
+        up (list): 相机上方向 [x, y, z]
+    
+    返回:
+        str: 更新后的XML内容
+    """
+    try:
+        # 解析XML
+        root = ET.fromstring(xml_content)
+        
+        # 查找lookat元素
+        lookat_elem = root.find(".//lookat")
+        if lookat_elem is not None:
+            # 更新lookat属性
+            lookat_elem.set("origin", f"{origin[0]},{origin[1]},{origin[2]}")
+            lookat_elem.set("target", f"{target[0]},{target[1]},{target[2]}")
+            lookat_elem.set("up", f"{up[0]},{up[1]},{up[2]}")
+            
+            # 生成更新后的XML
+            return prettify_xml(root)
+        else:
+            print("警告: 未能在XML中找到相机lookat元素。")
+            return xml_content
+    except Exception as e:
+        print(f"更新相机参数时发生错误: {e}")
+        return xml_content 

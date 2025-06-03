@@ -1,0 +1,51 @@
+# Python 缓存和构建
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+env/
+.env/
+
+# Mitsuba 渲染中间文件
+*.xml
+*.exr
+
+# 渲染输出
+# examples/output/
+temp_renders/
+test_output/
+
+# IDE/编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db 
+.~lock.*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 示例数据（如需忽略）
+# examples/data/pcl/
