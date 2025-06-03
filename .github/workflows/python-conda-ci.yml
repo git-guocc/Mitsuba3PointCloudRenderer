@@ -23,4 +23,4 @@ jobs:
     - name: Run test script
       shell: bash
       run: |
-        bash test.sh 
+        conda run -n PointCloudRender bash test.sh 
