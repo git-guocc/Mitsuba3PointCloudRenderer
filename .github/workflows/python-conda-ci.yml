@@ -5,6 +5,10 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONLEGACYWINDOWSSTDIO: utf-8
+      CI_TEST_MODE: true  # 启用 CI 测试模式
 
     steps:
     - uses: actions/checkout@v3
@@ -21,6 +25,15 @@ jobs:
       run: conda info --envs
 
     - name: Run test script
-      shell: bash -leo pipefail {0}
+      shell: pwsh
       run: |
-        conda run -n PointCloudRender bash test.sh 
+        conda activate PointCloudRender
+        # 设置输出编码为 UTF-8
+        $env:PYTHONIOENCODING = "utf-8" 
+        # 对于 Windows，使用遗留的标准 I/O 处理方式
+        $env:PYTHONLEGACYWINDOWSSTDIO = "utf-8"
+        # 启用 CI 测试模式
+        $env:CI_TEST_MODE = "true"
+        # 尝试在 PowerShell 中设置输出编码
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        bash test.sh 

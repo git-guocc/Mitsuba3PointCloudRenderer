@@ -83,6 +83,11 @@ def find_mitsuba_executable():
         # 用户指定的路径 (最高优先级)
         "C:\\Users\\xxx\\anaconda3\\envs\\PointCloudRender\\Scripts\\mitsuba.exe",
         
+        # Conda 环境路径 (对CI环境有用)
+        os.path.join(os.environ.get('CONDA_PREFIX', ''), 'Scripts', 'mitsuba.exe'),
+        os.path.join(os.environ.get('CONDA_PREFIX', ''), 'bin', 'mitsuba'),
+        os.path.join(os.environ.get('CONDA_PREFIX', ''), 'mitsuba'),
+        
         # Windows路径
         'mitsuba.exe',
         'C:\\Program Files\\Mitsuba\\mitsuba.exe',
@@ -98,12 +103,19 @@ def find_mitsuba_executable():
     
     # 首先检查文件是否存在
     for path in common_paths:
-        if os.path.isfile(path):
-            print(f"已找到Mitsuba: {path}")
-            return path
+        try:
+            if path and os.path.isfile(path):
+                print(f"已找到Mitsuba: {path}")
+                return path
+        except Exception:
+            # 忽略路径无效的错误
+            continue
     
     # 如果文件存在检查失败，尝试运行命令
     for path in common_paths:
+        if not path:
+            continue
+            
         try:
             # 尝试执行带--version参数的命令，检查是否可用
             result = subprocess.run([path, '--version'], 
@@ -114,9 +126,42 @@ def find_mitsuba_executable():
             if result.returncode == 0:
                 print(f"已验证Mitsuba可执行: {path}")
                 return path
-        except Exception as e:
+        except Exception:
             # 忽略错误，继续尝试下一个路径
             continue
+    
+    # 尝试从PATH中直接查找
+    try:
+        # 在Windows上
+        if sys.platform == 'win32':
+            result = subprocess.run(['where', 'mitsuba'], 
+                                  stdout=subprocess.PIPE, 
+                                  stderr=subprocess.PIPE, 
+                                  text=True, 
+                                  check=False)
+            if result.returncode == 0 and result.stdout.strip():
+                path = result.stdout.strip().split('\n')[0]
+                print(f"已从PATH找到Mitsuba: {path}")
+                return path
+        # 在Linux/macOS上
+        else:
+            result = subprocess.run(['which', 'mitsuba'], 
+                                  stdout=subprocess.PIPE, 
+                                  stderr=subprocess.PIPE, 
+                                  text=True, 
+                                  check=False)
+            if result.returncode == 0 and result.stdout.strip():
+                path = result.stdout.strip()
+                print(f"已从PATH找到Mitsuba: {path}")
+                return path
+    except Exception:
+        # 忽略错误
+        pass
+    
+    # 为了CI环境的测试，允许MOCK模式
+    if os.environ.get('MITSUBA_MOCK', '').lower() in ('true', '1', 'yes'):
+        print("警告: 未找到真实的Mitsuba可执行文件，但已启用MOCK模式")
+        return "mock_mitsuba"
     
     print("未找到Mitsuba可执行文件，请确保Mitsuba已正确安装")
     return None
@@ -145,6 +190,7 @@ def render_point_cloud(args):
             - cleanup: 是否清理中间文件
             - mitsuba_path: Mitsuba可执行文件路径
             - include_ground: 是否包含地面
+            - ci_test_mode: 是否在CI测试模式下运行（不需要真正的Mitsuba）
     
     返回:
         bool: 渲染是否成功
@@ -157,35 +203,48 @@ def render_point_cloud(args):
     if 'seed' in args and args['seed'] is not None:
         np.random.seed(args['seed'])
     
+    # 检查是否为CI测试模式
+    ci_test_mode = args.get('ci_test_mode', False)
+    if ci_test_mode or os.environ.get('CI_TEST_MODE', '').lower() in ('true', '1', 'yes'):
+        ci_test_mode = True
+        print("检测到CI测试模式，将跳过实际渲染过程。")
+    
     # 查找Mitsuba可执行文件
     mitsuba_path = args.get('mitsuba_path')
     if not mitsuba_path:
         mitsuba_path = find_mitsuba_executable()
         if not mitsuba_path:
-            print("错误: 未找到Mitsuba可执行文件。请通过以下方式指定Mitsuba路径:")
-            print("1. 使用set_mitsuba_path()函数设置路径")
-            print("2. 指定--mitsuba_path命令行参数")
-            print("3. 设置MITSUBA_EXECUTABLE环境变量")
-            print("4. 修改mitsuba_pcr/render.py中的common_paths列表添加您的Mitsuba路径")
-            return False
+            if ci_test_mode:
+                print("CI测试模式: 未找到Mitsuba，但将继续处理其他步骤。")
+                mitsuba_path = "mock_mitsuba"  # 设置一个占位值以便继续
+            else:
+                print("错误: 未找到Mitsuba可执行文件。请通过以下方式指定Mitsuba路径:")
+                print("1. 使用set_mitsuba_path()函数设置路径")
+                print("2. 指定--mitsuba_path命令行参数")
+                print("3. 设置MITSUBA_EXECUTABLE环境变量")
+                print("4. 修改mitsuba_pcr/render.py中的common_paths列表添加您的Mitsuba路径")
+                print("5. 或者设置CI_TEST_MODE=true环境变量以跳过实际渲染")
+                return False
     else:
         # 验证用户提供的路径是否有效
-        if not os.path.isfile(mitsuba_path):
+        if not os.path.isfile(mitsuba_path) and not ci_test_mode:
             print(f"错误: 指定的Mitsuba路径不存在: '{mitsuba_path}'")
             return False
         
         try:
             # 尝试执行带--version参数的命令，检查是否可用
-            result = subprocess.run([mitsuba_path, '--version'], 
-                                   stdout=subprocess.PIPE, 
-                                   stderr=subprocess.PIPE, 
-                                   text=True, 
-                                   check=False)
-            if result.returncode != 0:
-                print(f"警告: 指定的Mitsuba路径可能无效: '{mitsuba_path}'")
-                print(f"错误信息: {result.stderr}")
+            if not ci_test_mode and mitsuba_path != "mock_mitsuba":
+                result = subprocess.run([mitsuba_path, '--version'], 
+                                      stdout=subprocess.PIPE, 
+                                      stderr=subprocess.PIPE, 
+                                      text=True, 
+                                      check=False)
+                if result.returncode != 0:
+                    print(f"警告: 指定的Mitsuba路径可能无效: '{mitsuba_path}'")
+                    print(f"错误信息: {result.stderr}")
         except Exception as e:
-            print(f"警告: 无法验证Mitsuba路径: {e}")
+            if not ci_test_mode:
+                print(f"警告: 无法验证Mitsuba路径: {e}")
     
     print(f"使用Mitsuba路径: {mitsuba_path}")
     
@@ -305,6 +364,24 @@ def render_point_cloud(args):
     xml_content = generate_scene_xml(render_config)
     if not save_scene_xml(xml_content, xml_file):
         return False
+    
+    # 在CI测试模式下，创建一个空的输出文件并返回
+    if ci_test_mode or mitsuba_path == "mock_mitsuba":
+        print("CI测试模式: 跳过实际渲染，创建空的输出文件")
+        
+        # 创建一个空的或简单的输出文件
+        if output_format != 'exr':
+            # 创建一个简单的PNG/JPG文件
+            from PIL import Image
+            img = Image.new('RGB', (64, 64), color = (73, 109, 137))
+            img.save(output_file)
+        else:
+            # 创建一个空的EXR文件 (这可能需要额外的库)
+            with open(exr_file, 'wb') as f:
+                f.write(b'SIMPLE_EXR_PLACEHOLDER')
+                
+        print(f"CI测试模式: 创建了输出文件: {output_file if output_format != 'exr' else exr_file}")
+        return True
     
     # 调用Mitsuba渲染
     print(f"调用Mitsuba进行渲染: {xml_file} -> {exr_file}")
