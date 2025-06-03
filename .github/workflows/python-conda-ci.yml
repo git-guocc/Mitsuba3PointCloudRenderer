@@ -21,6 +21,6 @@ jobs:
       run: conda info --envs
 
     - name: Run test script
-      shell: bash
+      shell: bash -leo pipefail {0}
       run: |
-        bash test.sh 
+        conda run -n PointCloudRender bash test.sh 
