@@ -10,7 +10,6 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Set up Miniconda
-      id: setup_conda
       uses: conda-incubator/setup-miniconda@v3
       with:
         auto-update-conda: true
@@ -22,6 +21,7 @@ jobs:
       run: conda info --envs
 
     - name: Run test script
-      shell: bash -leo pipefail {0}
+      shell: pwsh
       run: |
-        ${{ steps.setup_conda.outputs.conda-exe }} run -n PointCloudRender bash test.sh 
+        conda activate PointCloudRender
+        bash test.sh 
