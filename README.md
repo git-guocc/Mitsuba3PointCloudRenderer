@@ -13,14 +13,14 @@
   <img src="./examples/output/gif/Nick.gif" width="32%" />
 </div>
 
-### 无阴影渲染效果（使用sRGB颜色空间修正）
+### 效果示例：无地面渲染
 <div align="center">
-  <img src="./examples/output/png/colormap/camel0.png" width="97%" />
+  <img src="examples\output\png\elephant_noshadow.png" width="97%" />
 </div>
 
-### 带阴影渲染效果（未使用sRGB颜色空间修正）
+### 效果示例：带贴附地面与阴影渲染
 <div align="center">
-  <img src="./examples/output/png/colormap/camel1.png" width="97%" />
+  <img src="examples\output\png\elephant.png" width="97%" />
 </div>
 
 ## 功能特点

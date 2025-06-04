@@ -140,18 +140,28 @@ def convert_exr_to_image(exr_file, output_file, flip_horizontal=False):
         data_window = exr.header()['dataWindow']
         size = (data_window.max.x - data_window.min.x + 1, data_window.max.y - data_window.min.y + 1)
 
-        # 读取RGB通道
-        rgb = [np.frombuffer(exr.channel(c, pixel_type), dtype=np.float32) for c in 'RGB']
-        
-        # sRGB EOTF (gamma校正)
-        for i in range(3):
-            rgb[i] = np.where(rgb[i] <= 0.0031308,
-                              (rgb[i] * 12.92) * 255.0,
-                              (1.055 * (rgb[i] ** (1.0 / 2.4)) - 0.055) * 255.0)
+        # 读取RGB通道并重塑为 (height, width)
+        img_linear_r = np.frombuffer(exr.channel('R', pixel_type), dtype=np.float32).reshape(size[1], size[0])
+        img_linear_g = np.frombuffer(exr.channel('G', pixel_type), dtype=np.float32).reshape(size[1], size[0])
+        img_linear_b = np.frombuffer(exr.channel('B', pixel_type), dtype=np.float32).reshape(size[1], size[0])
 
-        # 转换为PIL图像
-        rgb8 = [Image.frombytes("F", size, c.tobytes()).convert("L") for c in rgb]
-        merged_image = Image.merge("RGB", rgb8)
+        # 将通道堆叠为 (height, width, 3) 的图像数组
+        img_linear = np.stack((img_linear_r, img_linear_g, img_linear_b), axis=-1)
+        
+        # 应用sRGB EOTF (伽马校正)
+        # Mitsuba输出的线性值可能超过1.0 (例如高光区域)。为了在LDR显示器上正确显示，
+        # 通常在应用EOTF之前将值削峰到[0,1]范围。
+        img_linear_clipped = np.clip(img_linear, 0, 1.0)
+
+        img_srgb_float = np.where(img_linear_clipped <= 0.0031308,
+                                  img_linear_clipped * 12.92,
+                                  (1.055 * (img_linear_clipped ** (1.0 / 2.4)) - 0.055))
+        
+        # 从[0,1]范围的浮点sRGB值转换为[0,255]范围的uint8
+        img_srgb_uint8 = (np.clip(img_srgb_float, 0, 1) * 255).astype(np.uint8)
+
+        # 从uint8 NumPy数组创建PIL图像
+        merged_image = Image.fromarray(img_srgb_uint8, 'RGB')
         
         # 如果需要，水平翻转图像
         if flip_horizontal:

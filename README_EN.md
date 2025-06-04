@@ -13,14 +13,14 @@ A point cloud visualization tool based on the [Mitsuba3](https://github.com/mits
   <img src="./examples/output/gif/Nick.gif" width="32%" />
 </div>
 
-### Shadowless Rendering (with sRGB correction)
+### Example: Rendering without Ground Plane
 <div align="center">
-  <img src="./examples/output/png/colormap/camel0.png" width="97%" />
+  <img src="examples\output\png\elephant_noshadow.png" width="97%" />
 </div>
 
-### Rendering with Shadows (without sRGB correction)
+### Example: Rendering with Attached Ground and Shadows
 <div align="center">
-  <img src="./examples/output/png/colormap/camel1.png" width="97%" />
+  <img src="examples\output\png\elephant.png" width="97%" />
 </div>
 
 ## Features
