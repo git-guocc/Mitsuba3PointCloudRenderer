@@ -47,5 +47,7 @@ Thumbs.db
 # Jupyter
 .ipynb_checkpoints/
 
+#trash
+trash/
 # 示例数据（如需忽略）
 # examples/data/pcl/

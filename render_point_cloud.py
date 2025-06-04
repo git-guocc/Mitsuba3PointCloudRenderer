@@ -23,7 +23,7 @@ def main():
     parser.add_argument("--pattern", default="*.ply", help="批量模式下的文件匹配模式 (默认: '*.ply')")
     
     # 渲染参数
-    parser.add_argument("--integrator", choices=["path", "direct"], default="direct", 
+    parser.add_argument("--integrator", choices=["path", "direct"], default="path", 
                         help="Mitsuba积分器类型: path (完整光照和阴影), direct (简化光照)")
     parser.add_argument("--samples", type=int, default=256, help="每像素采样数")
     parser.add_argument("--max_depth", type=int, default=-1, help="最大光线深度 (-1表示无限)")
@@ -62,6 +62,13 @@ def main():
     parser.add_argument("--no_ground", dest="include_ground", action="store_false", help="不包含地面平面")
     parser.add_argument("--include_area_light", action="store_true", default=True, help="包含面光源")
     parser.add_argument("--no_area_light", dest="include_area_light", action="store_false", help="不包含面光源")
+    parser.add_argument("--attach_ground", action="store_true", help="添加贴附在点云下方的平面（适用于旋转视角）")
+    parser.add_argument("--attached_ground_offset", type=float, default=-0.05, help="贴附平面相对于点云最低点的偏移量")
+    parser.add_argument("--attached_ground_size", type=float, default=15, help="贴附平面的大小")
+    parser.add_argument("--env_light_intensity", type=float, default=1, help="环境光强度（0-1），用于均匀背景照明")
+    parser.add_argument("--background_color", nargs=3, type=float, default=[1, 1, 1], 
+                        help="背景颜色 (R G B)，范围[0, 1]")
+    parser.add_argument("--area_light_intensity", type=float, default=3.0, help="面光源强度 (默认: 3.0)")
     
     # 其他参数
     parser.add_argument("--seed", type=int, default=42, help="随机种子")
@@ -69,6 +76,11 @@ def main():
     parser.add_argument("--mitsuba_path", help="Mitsuba可执行文件路径")
     
     args = parser.parse_args()
+    
+    # 如果启用了贴附平面，自动禁用原始地面平面
+    if args.attach_ground:
+        args.include_ground = False
+        print("启用贴附平面，自动禁用原始地面平面")
     
     # 批量处理模式
     if args.batch:

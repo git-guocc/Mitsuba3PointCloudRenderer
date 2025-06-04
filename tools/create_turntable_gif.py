@@ -153,6 +153,12 @@ def main():
     parser.add_argument("--resolution", nargs=2, type=int, default=[800, 600], help="输出分辨率 (宽 高) (默认: [800, 600])")
     parser.add_argument("--samples", type=int, default=64, help="每像素采样数 (默认: 64, 较低以提高速度)")
     parser.add_argument("--point_radius", type=float, default=0.015, help="点半径 (默认: 0.015)")
+    parser.add_argument("--attach_ground", action="store_true", help="添加贴附在点云下方的平面（适用于旋转视角）")
+    parser.add_argument("--attached_ground_offset", type=float, default=-0.05, help="贴附平面相对于点云最低点的偏移量")
+    parser.add_argument("--attached_ground_size", type=float, default=15, help="贴附平面的大小")
+    parser.add_argument("--env_light_intensity", type=float, default=0.5, help="环境光强度（0-1），用于均匀背景照明")
+    parser.add_argument("--background_color", nargs=3, type=float, default=[1, 1, 1], 
+                        help="背景颜色 (R G B)，范围[0, 1]")
     parser.add_argument("--color_mode", choices=["original", "position", "height", "fixed"], default="original", 
                         help="颜色模式 (默认: original)")
     parser.add_argument("--fixed_color", nargs=3, type=float, default=[0.7, 0.7, 0.7], 
@@ -349,12 +355,28 @@ def main():
         render_cmd = [
             sys.executable, args.render_script_path, args.input_file,
             "--output_dir", args.temp_dir_frames, "--output_prefix", output_frame_prefix,
-            "--output_format", "png", "--no_ground", 
+            "--output_format", "png", 
             "--camera_params", camera_params_for_render, "--fov", str(args.fov),
             "--resolution", str(args.resolution[0]), str(args.resolution[1]),
             "--samples", str(args.samples), "--point_radius", str(args.point_radius),
             "--color_mode", args.color_mode, "--color_map", args.color_map, "--cleanup"
         ]
+        
+        # 如果启用了贴附平面，添加相关参数（会自动禁用原始地面平面）
+        if args.attach_ground:
+            render_cmd.append("--attach_ground")
+            render_cmd.extend(["--attached_ground_offset", str(args.attached_ground_offset)])
+            render_cmd.extend(["--attached_ground_size", str(args.attached_ground_size)])
+        else:
+            # 如果没有启用贴附平面，则明确指定是否需要原始地面平面
+            render_cmd.append("--no_ground")  # 在转盘动画中默认禁用原始地面平面
+        
+        # 添加环境光强度参数
+        render_cmd.extend(["--env_light_intensity", str(args.env_light_intensity)])
+        
+        # 添加背景颜色参数
+        render_cmd.extend(["--background_color", str(args.background_color[0]), str(args.background_color[1]), str(args.background_color[2])])
+        
         render_cmd.extend(["--num_points", str(args.num_render_points)])
 
         if args.fixed_color and args.color_mode == "fixed":

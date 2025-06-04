@@ -354,7 +354,17 @@ def render_point_cloud(args):
         'colors': point_colors,
         'point_radius': args.get('point_radius', 0.015),
         'include_ground': args.get('include_ground', True),
-        'include_area_light': args.get('include_area_light', True)
+        'include_area_light': args.get('include_area_light', True),
+        'light_params': {
+            'intensity': args.get('area_light_intensity', 3.0)
+        },
+        'attach_ground': args.get('attach_ground', False),
+        'attached_ground_params': {
+            'size': args.get('attached_ground_size', 15),
+            'offset': args.get('attached_ground_offset', -0.05)
+        },
+        'env_light_intensity': args.get('env_light_intensity', 1.0),
+        'background_color': args.get('background_color', [1, 1, 1])
     }
     
     # 添加相机配置

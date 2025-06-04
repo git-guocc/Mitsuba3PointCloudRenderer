@@ -7,6 +7,7 @@ XML场景生成模块
 import os
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
+import numpy as np
 
 def prettify_xml(elem):
     """
@@ -35,7 +36,8 @@ def create_scene_element():
 
 def add_constant_emitter(scene, radiance=(1, 1, 1)):
     """
-    添加常量发光体
+    添加常量发光体，用于提供均匀的背景光照
+    注意：此函数目前未被使用，保留以备将来可能的用途。背景光照现在由add_background函数处理。
     
     参数:
         scene (Element): 场景元素
@@ -50,6 +52,28 @@ def add_constant_emitter(scene, radiance=(1, 1, 1)):
     rgb = ET.SubElement(emitter, "rgb")
     rgb.set("name", "radiance")
     rgb.set("value", f"{radiance[0]},{radiance[1]},{radiance[2]}")
+    
+    return emitter
+
+def add_background(scene, color=(1, 1, 1)):
+    """
+    添加背景，确保渲染时有一个一致的背景色
+    
+    参数:
+        scene (Element): 场景元素
+        color (tuple): RGB颜色值
+    
+    返回:
+        Element: 添加的背景元素
+    """
+    # 创建一个常量发射器作为背景
+    emitter = ET.SubElement(scene, "emitter")
+    emitter.set("type", "constant")
+    
+    # 设置背景颜色
+    rgb = ET.SubElement(emitter, "rgb")
+    rgb.set("name", "radiance")
+    rgb.set("value", f"{color[0]},{color[1]},{color[2]}")
     
     return emitter
 
@@ -318,6 +342,99 @@ def add_area_light(scene, size=10, height=20, intensity=3):
     
     return shape
 
+def add_attached_ground_plane(scene, points, size=10, offset=-0.01, camera_params=None):
+    """
+    添加一个贴附在点云下方的平面，并根据相机视角进行调整
+    
+    参数:
+        scene (Element): 场景元素
+        points (numpy.ndarray): 点云坐标，用于确定平面位置
+        size (float): 平面大小
+        offset (float): 平面相对于点云最低点的偏移量
+        camera_params (dict): 相机参数，包含origin, target, up
+    
+    返回:
+        Element: 添加的平面元素
+    """
+    if points is None or points.shape[0] == 0:
+        return None
+    
+    # 创建平面
+    shape = ET.SubElement(scene, "shape")
+    shape.set("type", "rectangle")
+    
+    # 使用自定义材质，而不是引用全局材质
+    bsdf = ET.SubElement(shape, "bsdf")
+    bsdf.set("type", "diffuse")
+    
+    # 设置漫反射材质属性 (纯漫反射只有一个主要参数: reflectance)
+    reflectance = ET.SubElement(bsdf, "rgb")
+    reflectance.set("name", "reflectance")
+    reflectance.set("value", "1.0,1.0,1.0")
+    
+    transform = ET.SubElement(shape, "transform")
+    transform.set("name", "toWorld")
+    
+    # 使平面足够大，确保能覆盖整个点云
+    actual_size = size * 5  # 进一步增大平面尺寸
+    scale = ET.SubElement(transform, "scale")
+    scale.set("x", str(actual_size))
+    scale.set("y", str(actual_size))
+    scale.set("z", "1")
+    
+    # 如果提供了相机参数，根据相机视角调整平面
+    if camera_params and 'origin' in camera_params and 'target' in camera_params and 'up' in camera_params:
+        origin = np.array(camera_params['origin'])
+        target = np.array(camera_params['target'])
+        up = np.array(camera_params['up'])
+        
+        # 归一化up向量
+        up = up / np.linalg.norm(up)
+        
+        # 计算点云在up向量方向上的投影的最小值
+        projections = np.dot(points, up)
+        min_proj = np.min(projections)
+        
+        # 计算平面上的一个点（在最小投影点下方offset距离）
+        # 增加偏移量，确保平面位于点云下方足够远的位置
+        plane_point = min_proj * up + offset * 2 * up
+        
+        # 创建lookat变换，使平面与up向量垂直
+        lookat = ET.SubElement(transform, "lookat")
+        
+        # 计算lookat的三个参数
+        lookat_origin = plane_point.tolist()
+        lookat_target = (plane_point + up).tolist()
+        
+        # 计算相机视线方向
+        view_dir = target - origin
+        view_dir = view_dir / np.linalg.norm(view_dir)
+        
+        # 计算lookat的up向量（与up向量和视线方向都垂直）
+        lookat_up = np.cross(up, view_dir)
+        if np.linalg.norm(lookat_up) < 0.1:
+            # 如果叉积太小，选择另一个方向
+            lookat_up = np.cross(up, [1, 0, 0])
+            if np.linalg.norm(lookat_up) < 0.1:
+                lookat_up = np.cross(up, [0, 1, 0])
+        lookat_up = lookat_up / np.linalg.norm(lookat_up)
+        
+        lookat.set("origin", f"{lookat_origin[0]},{lookat_origin[1]},{lookat_origin[2]}")
+        lookat.set("target", f"{lookat_target[0]},{lookat_target[1]},{lookat_target[2]}")
+        lookat.set("up", f"{lookat_up[0]},{lookat_up[1]},{lookat_up[2]}")
+    else:
+        # 如果没有相机参数，使用默认的平面位置
+        # 计算点云的最低点（z坐标最小的点）
+        min_z = np.min(points[:, 2])
+        plane_height = min_z + offset * 2  # 增加偏移量
+        
+        translate = ET.SubElement(transform, "translate")
+        translate.set("x", "0")
+        translate.set("y", "0")
+        translate.set("z", str(plane_height))
+    
+    return shape
+
 def generate_scene_xml(config):
     """
     生成完整的Mitsuba场景XML
@@ -340,6 +457,10 @@ def generate_scene_xml(config):
             - ground_params (dict): 地面参数
             - include_area_light (bool): 是否包含面光源
             - light_params (dict): 光源参数
+            - attach_ground (bool): 是否添加贴附在点云下方的平面
+            - attached_ground_params (dict): 贴附平面参数
+            - env_light_intensity (float): 环境光强度
+            - background_color (tuple): 背景颜色 (r, g, b)
     
     返回:
         str: 完整的XML场景描述
@@ -357,14 +478,33 @@ def generate_scene_xml(config):
     target = config.get('target', [0, 0, 0])
     up = config.get('up', [0, 0, 1])
     
+    # 创建相机参数字典
+    camera_params = {
+        'origin': origin,
+        'target': target,
+        'up': up
+    }
+    
     # 创建场景
     scene = create_scene_element()
     
-    # 添加常量发光体
-    add_constant_emitter(scene)
-    
     # 添加积分器
-    add_integrator(scene, integrator_type, max_depth)
+    integrator = add_integrator(scene, integrator_type, max_depth)
+    
+    # 设置积分器的特殊参数，以解决背景问题
+    if integrator_type == "path":
+        # 添加hideEmitters参数，防止直接看到发光体
+        # 设置为true可以隐藏发光体本身，使其仅贡献间接光照，有助于实现均匀背景
+        # 注意：如果背景也是一个emitter（例如constant emitter），此设置也会隐藏背景emitter
+        hide_emitters = ET.SubElement(integrator, "boolean")
+        hide_emitters.set("name", "hideEmitters")
+        hide_emitters.set("value", "false")
+    
+    # 添加背景/环境光
+    background_color = config.get('background_color', (1, 1, 1))
+    
+    # 背景发射器直接使用 background_color
+    add_background(scene, background_color)
     
     # 添加相机
     add_perspective_sensor(scene, origin, target, up, fov, film_width, film_height, samples_per_pixel)
@@ -387,6 +527,13 @@ def generate_scene_xml(config):
         size = ground_params.get('size', 10)
         height = ground_params.get('height', -0.5)
         add_ground_plane(scene, size, height)
+    
+    # 添加贴附在点云下方的平面（如果需要）
+    if config.get('attach_ground', False) and 'points' in config:
+        attached_ground_params = config.get('attached_ground_params', {})
+        size = attached_ground_params.get('size', 15)
+        offset = attached_ground_params.get('offset', -0.05)
+        add_attached_ground_plane(scene, config['points'], size, offset, camera_params)
     
     # 添加面光源（如果需要）
     if config.get('include_area_light', True):
