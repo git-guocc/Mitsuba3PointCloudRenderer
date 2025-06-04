@@ -162,12 +162,29 @@ usage: render_point_cloud.py [-h] [--output_dir OUTPUT_DIR] [--output_prefix OUT
                             [--color_mode {original,position,height,fixed}]
                             [--fixed_color R G B] [--color_axis {0,1,2}]
                             [--color_map {viridis,jet,rainbow,turbo}]
-                            [--camera_params CAMERA_PARAMS] [--fov FOV] [--flip_horizontal]
-                            [--include_ground] [--no_ground] [--include_area_light]
-                            [--no_area_light] [--seed SEED] [--cleanup]
-                            [--mitsuba_path MITSUBA_PATH]
+                            [--camera_params CAMERA_PARAMS] [--fov FOV]
+                            [--flip_horizontal | --no_flip_horizontal]
+                            [--include_ground | --no_ground]
+                            [--include_area_light | --no_area_light]
+                            [--attach_ground] [--attached_ground_offset ATTACHED_GROUND_OFFSET]
+                            [--attached_ground_size ATTACHED_GROUND_SIZE]
+                            [--env_light_intensity ENV_LIGHT_INTENSITY]
+                            [--background_color BG_R BG_G BG_B]
+                            [--area_light_intensity AREA_LIGHT_INTENSITY]
+                            [--seed SEED] [--cleanup] [--mitsuba_path MITSUBA_PATH]
                             input_file
 ```
+
+**关于场景与光照参数的说明：**
+
+*   `--include_ground` / `--no_ground`: 控制是否包含一个固定的标准地面平面。
+*   `--attach_ground`: 添加一个贴附在点云下方的平面，该平面会跟随相机视角旋转，适用于需要旋转物体同时保持地面相对位置的场景。启用此选项会自动禁用标准地面 (`--include_ground` 将被设为 `False`)。
+    *   `--attached_ground_offset FLOAT`: 贴附平面相对于点云在该方向上投影的最低点的偏移量（默认为-0.05）。
+    *   `--attached_ground_size FLOAT`: 贴附平面的大小（默认为15）。
+*   `--include_area_light` / `--no_area_light`: 控制是否包含一个主要的面光源。
+*   `--background_color R G B`: 定义背景颜色（例如 `1 1 1` 表示白色），范围 [0, 1]。此颜色值直接设定了场景中唯一环境发射器（背景天空）的辐射亮度。因此，它既是直接可见的背景颜色，也是场景全局环境光的主要来源。
+*   `--area_light_intensity FLOAT`: 控制主要面光源的强度（默认为3.0）。这是场景中的主要方向性光源，负责产生点云和地面上的主要阴影。请注意：面光源的大小当前在代码中固定，无法通过此命令行参数修改。
+*   `--env_light_intensity FLOAT`: 环境光强度（范围 0-1，默认为1.0）。**[当前状态]** 此参数的预期功能是控制一个独立的环境补光，用以柔化阴影。但由于Mitsuba场景目前仅支持单个环境发射器（该发射器已由 `--background_color` 定义其属性），此参数值在当前的场景生成逻辑中未被激活以添加额外的独立光源。如需调整整体环境光照水平，应主要通过 `--background_color` 来控制背景发射器的亮度。
 
 ### tools/camera_setup.py
 

@@ -65,10 +65,12 @@ def main():
     parser.add_argument("--attach_ground", action="store_true", help="添加贴附在点云下方的平面（适用于旋转视角）")
     parser.add_argument("--attached_ground_offset", type=float, default=-0.05, help="贴附平面相对于点云最低点的偏移量")
     parser.add_argument("--attached_ground_size", type=float, default=15, help="贴附平面的大小")
-    parser.add_argument("--env_light_intensity", type=float, default=1, help="环境光强度（0-1），用于均匀背景照明")
+    parser.add_argument("--env_light_intensity", type=float, default=1, 
+                        help="环境光强度（0-1）。[当前状态] 此参数的预期功能是控制一个独立的环境补光，用以柔化阴影。但由于Mitsuba场景仅支持单个环境发射器（当前由--background_color定义），此参数值目前在场景的XML生成过程中未被激活以添加额外的独立光源。")
     parser.add_argument("--background_color", nargs=3, type=float, default=[1, 1, 1], 
-                        help="背景颜色 (R G B)，范围[0, 1]")
-    parser.add_argument("--area_light_intensity", type=float, default=3.0, help="面光源强度 (默认: 3.0)")
+                        help="背景颜色 (R G B)，范围[0, 1]。此颜色值直接设定了场景中唯一环境发射器（背景天空）的辐射亮度。因此，它既是直接可见的背景颜色，也是场景全局环境光的主要来源。")
+    parser.add_argument("--area_light_intensity", type=float, default=3.0, 
+                        help="面光源强度 (默认: 3.0)。这是场景中的主要方向性光源，负责产生点云和地面上的主要阴影。其大小当前在代码中固定。")
     
     # 其他参数
     parser.add_argument("--seed", type=int, default=42, help="随机种子")

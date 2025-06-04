@@ -344,27 +344,47 @@ def render_point_cloud(args):
     
     # 准备渲染配置
     render_config = {
-        'integrator_type': args.get('integrator', 'path'),
-        'samples_per_pixel': args.get('samples', 256),
-        'max_depth': args.get('max_depth', -1),
-        'film_width': args.get('resolution', [3840, 2160])[0],
-        'film_height': args.get('resolution', [3840, 2160])[1],
-        'fov': args.get('fov', 91.49),
-        'points': transformed_points,
-        'colors': point_colors,
-        'point_radius': args.get('point_radius', 0.015),
-        'include_ground': args.get('include_ground', True),
-        'include_area_light': args.get('include_area_light', True),
-        'light_params': {
-            'intensity': args.get('area_light_intensity', 3.0)
+        # --- 渲染器与采样 --- #
+        'integrator_type': args.get('integrator', 'path'), # 使用的积分器类型 (e.g., 'path', 'direct')
+        'samples_per_pixel': args.get('samples', 256),   # 每像素的采样数量
+        'max_depth': args.get('max_depth', -1),           # 光线追踪的最大深度
+        
+        # --- 输出图像属性 --- #
+        'film_width': args.get('resolution', [3840, 2160])[0], # 输出图像宽度
+        'film_height': args.get('resolution', [3840, 2160])[1],# 输出图像高度
+        'fov': args.get('fov', 91.49), # 相机视场角
+        
+        # --- 点云数据 --- # 
+        'points': transformed_points, # 经过标准化和变换的点云坐标
+        'colors': point_colors,       # 点云颜色 (可能来自原始数据或颜色映射)
+        'point_radius': args.get('point_radius', 0.015), # 点云中每个点的渲染半径
+        
+        # --- 场景元素控制 --- #
+        'include_ground': args.get('include_ground', True), # 是否包含固定的原始地面平面 (若--attach_ground启用则通常为False)
+        'include_area_light': args.get('include_area_light', True), # 是否包含主要的面光源
+        
+        # --- 面光源参数 --- #
+        'light_params': { 
+            'intensity': args.get('area_light_intensity', 3.0), # 主要面光源的强度
+            # 注意：面光源大小当前在 xml_generator.py 中硬编码，不由命令行参数控制
         },
-        'attach_ground': args.get('attach_ground', False),
+        
+        # --- 贴附地面参数 (如果启用) --- #
+        'attach_ground': args.get('attach_ground', False), # 是否添加贴附在点云下方、随相机旋转的地面
         'attached_ground_params': {
-            'size': args.get('attached_ground_size', 15),
-            'offset': args.get('attached_ground_offset', -0.05)
+            'size': args.get('attached_ground_size', 15),     # 贴附地面的大小
+            'offset': args.get('attached_ground_offset', -0.05) # 贴附地面相对于点云最低点的偏移量
         },
-        'env_light_intensity': args.get('env_light_intensity', 1.0),
-        'background_color': args.get('background_color', [1, 1, 1])
+        
+        # --- 背景与环境光参数 --- #
+        # 定义主要环境发射器（背景天空）的颜色/亮度。
+        # 这既是直接可见背景的颜色，也是场景全局环境光的主要来源。
+        'background_color': args.get('background_color', [1, 1, 1]), 
+        
+        # 预期控制独立的环境补光强度，以柔化阴影。
+        # 注意：由于Mitsuba单环境发射器限制，且背景天空已由background_color定义，
+        # 此参数当前在 xml_generator.py 的场景生成逻辑中未被用来添加额外的独立光源。
+        'env_light_intensity': args.get('env_light_intensity', 1.0), 
     }
     
     # 添加相机配置

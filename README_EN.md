@@ -164,12 +164,29 @@ usage: render_point_cloud.py [-h] [--output_dir OUTPUT_DIR] [--output_prefix OUT
                             [--color_mode {original,position,height,fixed}]
                             [--fixed_color R G B] [--color_axis {0,1,2}]
                             [--color_map {viridis,jet,rainbow,turbo}]
-                            [--camera_params CAMERA_PARAMS] [--fov FOV] [--flip_horizontal]
-                            [--include_ground] [--no_ground] [--include_area_light]
-                            [--no_area_light] [--seed SEED] [--cleanup]
-                            [--mitsuba_path MITSUBA_PATH]
+                            [--camera_params CAMERA_PARAMS] [--fov FOV]
+                            [--flip_horizontal | --no_flip_horizontal]
+                            [--include_ground | --no_ground]
+                            [--include_area_light | --no_area_light]
+                            [--attach_ground] [--attached_ground_offset ATTACHED_GROUND_OFFSET]
+                            [--attached_ground_size ATTACHED_GROUND_SIZE]
+                            [--env_light_intensity ENV_LIGHT_INTENSITY]
+                            [--background_color BG_R BG_G BG_B]
+                            [--area_light_intensity AREA_LIGHT_INTENSITY]
+                            [--seed SEED] [--cleanup] [--mitsuba_path MITSUBA_PATH]
                             input_file
 ```
+
+**Note on Scene and Lighting Parameters:**
+
+*   `--include_ground` / `--no_ground`: Controls whether to include a fixed standard ground plane.
+*   `--attach_ground`: Adds a ground plane attached beneath the point cloud, which rotates with the camera view. Ideal for scenarios requiring object rotation while maintaining relative ground position. Enabling this option automatically disables the standard ground (`--include_ground` will be set to `False`).
+    *   `--attached_ground_offset FLOAT`: Offset of the attached plane relative to the lowest point of the point cloud's projection in that direction (default: -0.05).
+    *   `--attached_ground_size FLOAT`: Size of the attached plane (default: 15).
+*   `--include_area_light` / `--no_area_light`: Controls whether to include a main area light.
+*   `--background_color R G B`: Defines the background color (e.g., `1 1 1` for white), range [0, 1]. This color value directly sets the radiance of the scene's sole environment emitter (the background sky). Thus, it serves as both the directly visible background color and the primary source of global ambient light.
+*   `--area_light_intensity FLOAT`: Controls the intensity of the main area light (default: 3.0). This is the primary directional light source in the scene, responsible for casting major shadows on the point cloud and ground. Please note: The size of the area light is currently fixed in the code and cannot be modified via this command-line argument.
+*   `--env_light_intensity FLOAT`: Ambient light intensity (range 0-1, default: 1.0). **[Current Status]** This parameter is intended to control an independent ambient fill light to soften shadows. However, as Mitsuba scenes currently support only a single environment emitter (whose properties are already defined by `--background_color`), this parameter's value is not activated in the current scene generation logic to add an additional, separate light source. To adjust the overall ambient lighting level, you should primarily control the brightness of the background emitter via `--background_color`.
 
 ### tools/camera_setup.py
 

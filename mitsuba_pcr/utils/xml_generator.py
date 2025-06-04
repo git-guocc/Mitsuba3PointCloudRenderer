@@ -36,15 +36,20 @@ def create_scene_element():
 
 def add_constant_emitter(scene, radiance=(1, 1, 1)):
     """
-    添加常量发光体，用于提供均匀的背景光照
-    注意：此函数目前未被使用，保留以备将来可能的用途。背景光照现在由add_background函数处理。
+    添加一个通用常量发射器。
+
+    此函数创建一个向所有方向均匀发射指定辐射亮度的光源。
+    注意：此函数是一个通用工具。在当前的 `generate_scene_xml` 实现中，
+    场景的主要背景/环境光由 `add_background` 函数创建。
+    此 `add_constant_emitter` 函数未被 `generate_scene_xml` 用于创建主要背景或当前激活的独立补光。
+    之前的注释 "注意：此函数目前未被使用，保留以备将来可能的用途。背景光照现在由add_background函数处理。" 仍然适用。
     
     参数:
-        scene (Element): 场景元素
-        radiance (tuple): RGB辐射值
+        scene (Element): 场景根元素。
+        radiance (tuple): RGB元组，定义发射器的辐射亮度。
     
     返回:
-        Element: 添加的发光体元素
+        Element: 添加的常量发射器元素。
     """
     emitter = ET.SubElement(scene, "emitter")
     emitter.set("type", "constant")
@@ -57,14 +62,17 @@ def add_constant_emitter(scene, radiance=(1, 1, 1)):
 
 def add_background(scene, color=(1, 1, 1)):
     """
-    添加背景，确保渲染时有一个一致的背景色
+    添加恒定颜色的背景发射器。
+
+    此函数创建Mitsuba场景中的唯一环境发射器。其辐射亮度由 `color` 参数直接定义。
+    这个发射器既作为相机直接可见的背景（例如天空），也作为场景全局环境光的主要来源。
     
     参数:
-        scene (Element): 场景元素
-        color (tuple): RGB颜色值
+        scene (Element): 场景根元素。
+        color (tuple): RGB元组，定义发射器的辐射亮度。
     
     返回:
-        Element: 添加的背景元素
+        Element: 添加的背景发射器元素。
     """
     # 创建一个常量发射器作为背景
     emitter = ET.SubElement(scene, "emitter")
@@ -181,13 +189,16 @@ def add_perspective_sensor(scene, origin, target, up, fov, film_width, film_heig
 
 def add_surface_material(scene):
     """
-    添加表面材质
+    为场景添加一个通用的表面材质 (BSDF)。
+
+    此函数创建一个 'roughplastic' 类型的BSDF，具有预设的属性。
+    它被赋予ID "surfaceMaterial"，主要被 `add_ground_plane` 函数（用于创建原始的、非贴附的地面）引用。
     
     参数:
-        scene (Element): 场景元素
+        scene (Element): 场景根元素。
     
     返回:
-        Element: 添加的材质元素
+        Element: 添加的BSDF (材质) 元素。
     """
     bsdf = ET.SubElement(scene, "bsdf")
     bsdf.set("type", "roughplastic")
@@ -301,16 +312,23 @@ def add_ground_plane(scene, size=10, height=-0.5):
 
 def add_area_light(scene, size=10, height=20, intensity=3):
     """
-    添加面光源
+    添加面光源 (Area Light)。
+
+    这是场景中的主要方向性光源，用于产生阴影。
     
     参数:
-        scene (Element): 场景元素
-        size (float): 光源大小
-        height (float): 光源高度
-        intensity (float): 光源强度
+        scene (Element): 场景根元素。
+        size (float): 光源的尺寸 (通常是正方形的一边长度)。
+                      在 `generate_scene_xml` 中，此值可能来自 `config['light_params']['size']`，
+                      若未在配置中提供，则使用此函数的默认值。
+        height (float): 光源的高度位置。
+                      在 `generate_scene_xml` 中，此值可能来自 `config['light_params']['height']`，
+                      若未在配置中提供，则使用此函数的默认值。
+        intensity (float): 光源的辐射强度。每个RGB通道将使用此强度值。
+                         在 `generate_scene_xml` 中，此值来自 `config['light_params']['intensity']`。
     
     返回:
-        Element: 添加的光源元素
+        Element: 添加的面光源形状元素。
     """
     shape = ET.SubElement(scene, "shape")
     shape.set("type", "rectangle")
@@ -344,17 +362,25 @@ def add_area_light(scene, size=10, height=20, intensity=3):
 
 def add_attached_ground_plane(scene, points, size=10, offset=-0.01, camera_params=None):
     """
-    添加一个贴附在点云下方的平面，并根据相机视角进行调整
+    添加一个贴附在点云下方的平面，该平面会根据相机视角（如果提供相机参数）调整其方向和位置。
+
+    此平面使用一个纯漫反射 (diffuse) 材质，反射率(reflectance)设置为 (1.0, 1.0, 1.0)，以确保
+    在充分光照下能呈现纯白色，从而更好地与纯白背景融合。
     
     参数:
-        scene (Element): 场景元素
-        points (numpy.ndarray): 点云坐标，用于确定平面位置
-        size (float): 平面大小
-        offset (float): 平面相对于点云最低点的偏移量
-        camera_params (dict): 相机参数，包含origin, target, up
+        scene (Element): 场景根元素。
+        points (numpy.ndarray): 点云坐标，用于确定平面的基础高度。
+        size (float): 平面的基础尺寸。
+                      在 `generate_scene_xml` 中，此值来自 `config['attached_ground_params']['size']`。
+                      注意：函数内部可能会对此尺寸进行缩放 (e.g., `actual_size = size * 5`) 以确保覆盖范围。
+        offset (float): 平面相对于点云在特定方向（通常是z轴或相机up向量反方向）上投影的最低点的偏移量。
+                      在 `generate_scene_xml` 中，此值来自 `config['attached_ground_params']['offset']`。
+        camera_params (dict, optional): 相机参数字典，包含 'origin', 'target', 'up' NumPy数组。
+                                      如果提供，平面将对齐到与相机up向量垂直的方向，并基于点云在up向量上的
+                                      投影来确定位置。如果为None，则使用点云的Z轴最低点来定位平面。
     
     返回:
-        Element: 添加的平面元素
+        Element or None: 添加的贴附地面形状元素；如果点云数据为空，则返回None。
     """
     if points is None or points.shape[0] == 0:
         return None
@@ -437,33 +463,33 @@ def add_attached_ground_plane(scene, points, size=10, offset=-0.01, camera_param
 
 def generate_scene_xml(config):
     """
-    生成完整的Mitsuba场景XML
-    
+    生成完整的Mitsuba场景XML。
+
     参数:
-        config (dict): 配置参数字典，包含:
-            - integrator_type (str): 积分器类型，'path'或'direct'
-            - samples_per_pixel (int): 每像素采样数
-            - max_depth (int): 最大光线深度
-            - film_width (int): 输出图像宽度
-            - film_height (int): 输出图像高度
-            - fov (float): 视场角（度）
-            - origin (list): 相机原点坐标 [x, y, z]
-            - target (list): 相机目标点坐标 [x, y, z]
-            - up (list): 相机上方向 [x, y, z]
-            - points (numpy.ndarray): 点坐标
-            - colors (numpy.ndarray): 点颜色
-            - point_radius (float): 点半径
-            - include_ground (bool): 是否包含地面
-            - ground_params (dict): 地面参数
-            - include_area_light (bool): 是否包含面光源
-            - light_params (dict): 光源参数
-            - attach_ground (bool): 是否添加贴附在点云下方的平面
-            - attached_ground_params (dict): 贴附平面参数
-            - env_light_intensity (float): 环境光强度
-            - background_color (tuple): 背景颜色 (r, g, b)
-    
+        config (dict): 配置参数字典，主要键包括:
+            - 'integrator_type' (str): 积分器类型 ('path'或'direct')。
+            - 'samples_per_pixel' (int): 每像素采样数。
+            - 'max_depth' (int): 最大光线深度。
+            - 'film_width', 'film_height' (int): 输出图像尺寸。
+            - 'fov' (float): 视场角。
+            - 'origin', 'target', 'up' (list): 相机参数。
+            - 'points' (numpy.ndarray): 点云坐标。
+            - 'colors' (numpy.ndarray): 点云颜色。
+            - 'point_radius' (float): 点半径。
+            - 'include_ground' (bool): 是否包含固定的原始地面。
+            - 'ground_params' (dict): 原始地面参数 (如果使用)。
+            - 'include_area_light' (bool): 是否包含面光源。
+            - 'light_params' (dict): 面光源参数，包含:
+                - 'intensity' (float): 面光源的强度。
+                - 'size' (float): 面光源的大小 (注：此参数预期从config传入，但当前add_area_light函数可能使用固定值或其内部默认值，需检查该函数实现)。
+            - 'attach_ground' (bool): 是否添加贴附地面。
+            - 'attached_ground_params' (dict): 贴附地面参数。
+            - 'background_color' (tuple): RGB元组，定义唯一环境发射器（背景天空）的辐射亮度。
+                                         这既是直接可见的背景颜色，也是场景全局环境光的主要来源。
+            - 'env_light_intensity' (float): 预期用于控制独立环境补光。由于Mitsuba场景限制为单个环境发射器，
+                                            且该发射器已由'background_color'定义，此参数当前在场景生成中未被激活以添加额外光源。
     返回:
-        str: 完整的XML场景描述
+        str: 完整的XML场景描述。
     """
     # 默认参数
     integrator_type = config.get('integrator_type', 'path')
@@ -473,46 +499,39 @@ def generate_scene_xml(config):
     film_height = config.get('film_height', 2160)
     fov = config.get('fov', 91.49)
     
-    # 相机参数
-    origin = config.get('origin', [0, -4, 2])  # 更好的默认相机位置
+    origin = config.get('origin', [0, -4, 2])
     target = config.get('target', [0, 0, 0])
     up = config.get('up', [0, 0, 1])
     
-    # 创建相机参数字典
     camera_params = {
         'origin': origin,
         'target': target,
         'up': up
     }
     
-    # 创建场景
     scene = create_scene_element()
     
-    # 添加积分器
     integrator = add_integrator(scene, integrator_type, max_depth)
     
-    # 设置积分器的特殊参数，以解决背景问题
     if integrator_type == "path":
-        # 添加hideEmitters参数，防止直接看到发光体
-        # 设置为true可以隐藏发光体本身，使其仅贡献间接光照，有助于实现均匀背景
-        # 注意：如果背景也是一个emitter（例如constant emitter），此设置也会隐藏背景emitter
         hide_emitters = ET.SubElement(integrator, "boolean")
         hide_emitters.set("name", "hideEmitters")
-        hide_emitters.set("value", "false")
+        hide_emitters.set("value", "false") # 确保主要光源和背景可见
     
-    # 添加背景/环境光
-    background_color = config.get('background_color', (1, 1, 1))
+    # 设置背景发射器：颜色由 background_color 决定，它也是主要的环境光来源。
+    background_color_val = config.get('background_color', (1, 1, 1))
+    add_background(scene, background_color_val)
     
-    # 背景发射器直接使用 background_color
-    add_background(scene, background_color)
-    
-    # 添加相机
+    # env_light_intensity 当前不用于添加额外的独立环境光，
+    # 因为场景限制为单个环境发射器（已由 add_background 创建）。
+    # 如需调整整体环境光水平，应直接调整 background_color_val 的亮度。
+    # env_intensity_val = config.get('env_light_intensity', 1.0)
+    # if env_intensity_val > 0 and env_intensity_val != 1.0: # 避免重复添加或数值混乱
+    # print(f"注意: env_light_intensity ({env_intensity_val}) 当前不用于添加独立环境光。")
+
     add_perspective_sensor(scene, origin, target, up, fov, film_width, film_height, samples_per_pixel)
+    add_surface_material(scene) # 为原始地面（如果使用）添加通用表面材质
     
-    # 添加表面材质
-    add_surface_material(scene)
-    
-    # 添加点云
     if 'points' in config:
         add_point_cloud(
             scene, 
@@ -521,29 +540,26 @@ def generate_scene_xml(config):
             config.get('point_radius', 0.006)
         )
     
-    # 添加地面（如果需要）
     if config.get('include_ground', True):
         ground_params = config.get('ground_params', {})
         size = ground_params.get('size', 10)
         height = ground_params.get('height', -0.5)
         add_ground_plane(scene, size, height)
     
-    # 添加贴附在点云下方的平面（如果需要）
     if config.get('attach_ground', False) and 'points' in config:
         attached_ground_params = config.get('attached_ground_params', {})
         size = attached_ground_params.get('size', 15)
         offset = attached_ground_params.get('offset', -0.05)
         add_attached_ground_plane(scene, config['points'], size, offset, camera_params)
     
-    # 添加面光源（如果需要）
     if config.get('include_area_light', True):
         light_params = config.get('light_params', {})
-        size = light_params.get('size', 10)
-        height = light_params.get('height', 20)
-        intensity = light_params.get('intensity', 3)
+        # 从light_params获取强度；大小和高度使用函数默认值或硬编码值（如果light_params中没有传递）
+        intensity = light_params.get('intensity', 3) 
+        size = light_params.get('size', 10) # 尝试从config获取，否则使用默认值
+        height = light_params.get('height', 20) # 尝试从config获取，否则使用默认值
         add_area_light(scene, size, height, intensity)
     
-    # 生成格式化的XML字符串
     return prettify_xml(scene)
 
 def save_scene_xml(xml_content, output_file):
